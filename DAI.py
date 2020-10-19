@@ -18,16 +18,19 @@ DAN.device_registration_with_retry(ServerURL, Reg_addr)
 #DAN.deregister()  #if you want to deregister this device, uncomment this line
 #exit()            #if you want to deregister this device, uncomment this line
 
-#DAI feature
+#DAI feature & Variable
 T24_form = '%H:%M'
 Time_from = '%Y-%m-%d %H:%M'
 Time_interval = 10
 Tm_output = 26
 Tm_record_file = 'Tm.txt'
+Alpha = 0.8
+Day_data = []
 
 #function
 def Tm_addup(temp_avg):
-    
+    new_tm = (1-Alpha)*temp_avg + Alpha*Tm_output
+    return new_tm
 
 def get_slice_time(time_obj):
     hour = time_obj.hour
@@ -37,34 +40,35 @@ def get_slice_time(time_obj):
 #EN15251 role
 def comfort_temp(outside_temp):
     return (outside_temp+56)/3
-
-#thread function 1 : constantly change settemp by model predict
-def model_settemp():
-    #var
-    co2 = DAN.pull('CO2-O')
-    temp_out = DAN.pull('Temperature-O1')
-    temp_house = DAN.pull('Temperature-O6')
-    humidity = DAN.pull('Humidity-O6')
-    settemp1 = DAN.pull('Settemp-O1')
-    settemp2 = DAN.pull('Settemp-O2')
-    Setted_temperature = (settemp1+settemp2)/2
-    #pass
     
-    #push
-    
-#thread function 2 : change settemp by voting result
-def pullVoting(option_id,option_index):
-    Option = DAN.pull(option_id)
-    if Option = 1.0:
-        
-    
-#variable
-voted = False
+Now_date = datetime.datetime.today()
+Past_date = Now_date
+#try to read Tm first
+try:
+    f = open(Tm_record_file,'r')
+    tmp = float(f.read())
+    if tmp < 35 and tmp > 10:
+        Tm_output = tmp
+    f.close()
 #main
 while True:
     Last_time = time.time()
     try:
-        
+        Now_date = datetime.datetime.today()
+        #get data
+        temp = DAN.pull('Temperature-O1')
+        Day_data.append(temp)
+        if (Now_date != Past_date):
+            tmp_temp = np.average(np.ndarray(Day_data))
+            Tm_output = Tm_addup(tmp_temp)
+            #DAN.push('Settemp-O1',Tm_output)
+            Day_data = []
+            #save current data
+            f = open(Tm_record_file,'w')
+            f.write(str(Tm_output))
+            f.close()
+        DAN.push('Settemp-O1',Tm_output)
+        Past_date = Now_date
     except Exception as e:
         print(e)
         if str(e).find('mac_addr not found:') != -1:
@@ -73,9 +77,6 @@ while True:
         else:
             print('Connection failed due to unknow reasons.')
             time.sleep(1)    
-    #action push
-    for act in ACTION_SET:
-        DAN.push(act,Actions[act])
     #sleep
     time.sleep(60 - ((time.time() - Last_time) % 60)) #a minute check once
     
